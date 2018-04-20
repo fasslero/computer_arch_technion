@@ -26,7 +26,7 @@ void data_hdu_WB_EXE(void); // No nop
 int load_hdu_Mem_ID(void); // Has nop
 
 // The simulator pipeline
-SIM_coreState pipeline;
+SIM_core_state pipeline;
 
 // The simulator data
 int32_t pipeData[SIM_PIPELINE_DEPTH];
