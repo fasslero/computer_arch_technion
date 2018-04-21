@@ -12,12 +12,12 @@ void do_pipe_mem(void);
 // Returns 0 on success, -1 on wait-state
 int do_pipe_mem_load(void);
 void do_pipe_wb(void);
-void do_branch_if_needed(void);
+void do_write_to_reg_file(void);
+void do_branch_if_needed(void); //todo
 // Take Brunch - Flush and load from address
-void update_decode_data();
-//todo - change name to bubble or jump?
-void flush_buffer(int number);
-void do_flush(int jumpOffset);
+void flush_buffer(int number); //todo - change name to bubble or jump?
+void do_flush(int jumpOffset); //todo - need this?
+void do_flush_to_i_stages(int i);
 
 // Data-Hazard Detection Unit. Also updates in case of hazard.
 void data_hdu(void);
@@ -63,8 +63,9 @@ int SIM_CoreReset(void) {
     }
     return 0;
 }
-/*
+/**
  * init the cmd struct
+ *
  */
 void reset_cmd(PipeStageState* PipeStageState){
     PipeStageState->cmd.dst = 0;
@@ -85,7 +86,7 @@ void SIM_CoreClkTick() {
     do_pipe_mem();
 
     do_pipe_execute();
-
+    //todo - add all the hdu
     do_pipe_decode();
 
     do_pipe_fetch();
@@ -100,7 +101,9 @@ void SIM_CoreGetState(SIM_coreState *curState) {
 }
 
 /* The function dumps the state to stdout */
-void DumpCoreState(SIM_coreState *state);
+void DumpCoreState(SIM_coreState *state){
+    //todo
+}
 
 /**********************************
  *
@@ -130,20 +133,20 @@ void do_pipe_fetch(void){
 //decode the command and store the data in the SIM_cmd struct
 void do_pipe_decode(void){
     PipeStageState* decode_pipe_stage = &pipeline.pipeStageState[0];
-    SIM_cmd* cmd = &decode_pipe_stage.cmd;
-    cmd = pipeline.pipeStageState[0].cmd;
+    SIM_cmd* command = &decode_pipe_stage.cmd;
 
     //the first value is always red from the memory
-    decode_pipe_stage->src1Val = pipeline.regFile[decode_pipe_stage->src1Val];
+    decode_pipe_stage->src1Val = pipeline.regFile[command->src1];
 
     //in immediate command the second src value is taken from the command
-    if (cmd->isSrc2Imm) {
-        decode_pipe_stage->src2Val = cmd->src2;
+    if (command->isSrc2Imm) {
+        decode_pipe_stage->src2Val = command->src2;
     }
     else
     {
-        decode_pipe_stage->src2Val = pipeline.regFile[decode_pipe_stage->src2Val];
+        decode_pipe_stage->src2Val = pipeline.regFile[command->src2];
     }
+    //advance the pipe
     pipeline.pipeStageState[1].cmd = pipeline.pipeStageState[0].cmd;
     buffer_pc[1] =buffer_pc[0]; //take the pc with you
 }
@@ -152,39 +155,39 @@ void do_pipe_decode(void){
 void do_pipe_execute(void){
 
     // Get the command
-    SIM_cmd* command = &pipeline.pipeStageState[1].cmd;
     PipeStageState* execute_pipe_state = &pipeline.pipeStageState[1];
+    SIM_cmd* command = &execute_pipe_state.cmd;
 
     switch (command->opcode){
 
         // R-Type Commands
         // Do ALU commands
         // I'v added the addi and subi command here, is it ok? the number doesn't need to be signed extended?
-        case CMD_ADD or CMD_ADDI:
+        case CMD_ADD:
+        case CMD_ADDI:
             destData[2] = execute_pipe_state->src1Val + execute_pipe_state->src2Val;
             break;
 
-        case CMD_SUB or CMD_SUBI:
+        case CMD_SUB:
+        case CMD_SUBI:
             destData[2] = execute_pipe_state->src1Val - execute_pipe_state->src2Val;
             break;
 
         // I-Type Commands
-        // Calculate memory address
+            // Calculate memory address
         case CMD_LOAD:
             // calc the address by adding the immediate value. buffer_dst_data now has the address to load from.
-            buffer_dst_data[2] = execute_pipe_state->src1Val + execute_pipe_state->src2Val;
-        case CMD_STORE:
-            // calc the address by adding the immediate value. buffer_dst_data now has the address to store to.
+            //todo - this is how to calc the address, does it needs to be pc+4?
             buffer_dst_data[2] = execute_pipe_state->src1Val + execute_pipe_state->src2Val;
             break;
-        //todo - this is how to calc the address?
+        case CMD_STORE:
+            buffer_dst_data[2] = command->dst + execute_pipe_state->src2Val;
+
         case CMD_BR:
-            buffer_dst_data[2] = command->dst + buffer_pc[1];
         case CMD_BREQ:
-            buffer_dst_data[2] = command->dst + buffer_pc[1];
         case CMD_BRNEQ:
             buffer_dst_data[2] = command->dst + buffer_pc[1];
-        case CMD_HALT:
+        case CMD_HALT: //todo halt?
 
         default:
             buffer_dst_data[2] = 0;
@@ -199,8 +202,9 @@ void do_pipe_mem(void){
     // Get the command
     SIM_cmd* command = &pipeline.pipeStageState[2].cmd;
     PipeStageState* mem_pipe_state = &pipeline.pipeStageState[2];
+
     int32_t memory_address = buffer_dst_data[2]; //was calculated in the last cycle
-    int32_t calculted_branch_address = buffer_dst_data[2];
+    int32_t calculated_branch_address = buffer_dst_data[2];
 
     switch (command->opcode){
         case CMD_BR:
@@ -208,13 +212,13 @@ void do_pipe_mem(void){
             brunchAddress = pipeline.regFile[command->dst];
             break;
         case CMD_BREQ:
-            if (command->src1 == command->src2){
-                brunchAddress = calculted_branch_address;
+            if (mem_pipe_state->src1Val == mem_pipe_state->src2Val){
+                brunchAddress = calculated_branch_address;
             }
             break;
         case CMD_BRNEQ:
-            if (command->src1 != command->src2){
-                brunchAddress = calculted_branch_address;
+            if (mem_pipe_state->src1Val != mem_pipe_state->src2Val){
+                brunchAddress = calculated_branch_address;
             }
             break;
         case CMD_LOAD:
@@ -231,13 +235,13 @@ void do_pipe_mem(void){
     }
     pipeline.pipeStageState[3] = pipeline.pipeStageState[2];
     buffer_dst_data[3]= buffer_dst_data[2];
-    buffer_src_data[3] = buffer_src_data[2];
+    return 0; //todo - need this?
 }
 
 
 void do_pipe_wb(void){
     SIM_cmd* command = &pipeline.pipeStageState[3].cmd;
-    PipeStageState* wb_pipe_state = &pipeline.pipeStageState[2];
+    PipeStageState* wb_pipe_state = &pipeline.pipeStageState[3];
     int dst_register = command->dst;
 
     //if need to WB, write to the buffer.
@@ -256,9 +260,48 @@ void do_pipe_wb(void){
     // if split reg file is on write to the reg file, else this will be done in the begining of the fetch cycle
     if (split_regfile){
         pipeline.regFile[dst_register] = buffer_dst_data[4];
-        }
+    }
 
     else{
-        //is there else?
+        //use another buffer for the WB
+        pipeline.pipeStageState[4] = pipeline.pipeStageState[3];
     }
+}
+
+/*!
+ * write to the reg file, use if split reg file is not active
+ */
+void do_write_to_reg_file(void){
+    SIM_cmd* command = &pipeline.pipeStageState[4].cmd;
+    PipeStageState* wb_pipe_state = &pipeline.pipeStageState[4];
+    int dst_register = command->dst;
+    pipeline.regFile[dst_register] = buffer_dst_data[4];
+
+}
+
+/*!
+ * flush a pipe stage includes the buffered data and the pc
+ */
+
+void flush_buffer(int number){
+    PipeStageState* pipe_stage_to_flush = &pipeline.pipeStageState[number];
+
+    pipe_stage_to_flush->src2Val = 0;
+    pipe_stage_to_flush->src1Val = 0;
+    reset_cmd(pipe_stage_to_flush);
+    buffer_dst_data[number] = 0;
+    buffer_src_data[number] = 0;
+    buffer_pc[number] = 0;
+}
+
+/*!
+ * flush a number of stages, use if branch was taken
+ */
+void do_flush_to_i_stages(int i){
+
+    //flush stages 0 to i in the pipe
+    for (int j = 0; j < i; ++j) {
+        flush_buffer(j);
+    }
+
 }
