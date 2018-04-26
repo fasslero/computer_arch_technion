@@ -18,7 +18,7 @@ void do_branch_if_needed(void);
 void flush_buffer(int number);
 void do_flush_to_i_stages(int i);
 
-void do_halt(void); //todo
+void do_halt_if_needed(void); //todo
 
 // Data-Hazard Detection Unit. Also updates in case of hazard.
 void data_hdu(void); //todo
@@ -41,7 +41,7 @@ int32_t buffer_pc[SIM_PIPELINE_DEPTH];
 
 int tick_number = 0;
 int branch_address = 0;
-
+bool halt_flag = 0;
 
 
 /*! SIM_CoreReset: Reset the processor core simulator machine to start new simulation
@@ -138,6 +138,8 @@ void do_pipe_fetch(void){
     //save the pc+4 to the branch instructions
     buffer_pc[0] = pipeline.pc;
     free(nextCommand);
+
+    do_halt_if_needed();
 }
 
 //decode the command and store the data in the SIM_cmd struct
@@ -323,8 +325,8 @@ void do_write_to_reg_file(void){
     int dst_register = command->dst;
 
     pipeline.regFile[dst_register] = buffer_result_data[4];
-
 }
+
 
 /*!
  * flush a pipe stage includes the buffered data and the pc
@@ -366,6 +368,22 @@ void do_branch_if_needed(void){
     }
 }
 
+/*!
+ * halt the command - if CMD_HALT flush the pipe stage and sub 4 from pc
+ */
+void do_halt_if_needed(void){
+    PipeStageState* pipe_stage_to_halt = &pipeline.pipeStageState[0];
+    SIM_cmd* command = &pipeline.pipeStageState[0].cmd;
+
+    if (halt_flag == 1){
+        flush_buffer(0);
+    }
+    else if(command->opcode == CMD_HALT && halt_flag == 0){
+        halt_flag = 1;
+    }
+    pipeline.pc -= 4;
+
+}
 /*
  * print function for debug
  */
@@ -376,7 +394,9 @@ void print_state()
     DumpCoreState(&pipeline);
     printf("\n");
 }
-
+/*******************************
+ * HDUs
+ *******************************/
 //todo - finish
 /*!
  * Check whether the src and dst registers on pipe EXE and ID are the same.
