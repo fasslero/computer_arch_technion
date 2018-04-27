@@ -1,0 +1,38 @@
+# Memory image example - comments are allowed in lines that start with # as first character!
+# The memory image file is composed from segments of 2 types, defined by an "@" location/type line:
+#  1. "I@<address>" : The following lines are instructions at given memory offset.
+#     Each subsequent line (up to the next empty line or comment) is an instruction of format: <command> <dst>,<src1>,<src2>
+#     Commands is one of: NOP, ADD, SUB, LOAD, STORE, BR, BREQ, BRNEQ
+#     operands are $<num> for any general purpose register, or just a number (in decimal or hex.) for immediate (for src2 only)
+#  2. "D@<address>" : The following lines are data values at given memory offset.
+#     Each subsequent line (up to the next empty line or comment) is data value of a 32 bit (in decimal or hex.) data word, e.g., 0x12A556FF
+# The instructions are:
+# 	NOP
+#	ADD $dst, $src1, $src2 		(dst <- src1 + src2)
+#	SUB $dst, $src1, $src2 		(dst <- src1 - src2)
+#	LOAD $dst, $src1, $src2 	(dst <- Mem[src1 + src2]  src2 may be an immediate)
+#	STORE $dst, $src1, $src2 	(Mem[dst + src2] <- src1  src2 may be an immediate)
+#	BR $dst 					(Unconditional relative branch to PC+dst register value)
+#	BREQ $dst, $src1, $src2		(Branch to PC+dst if src1 == src2)
+#	BRNEQ $dst, $src1, $src2	(Branch to PC+dst if src1 != src2)
+
+# while(true){
+# 	for(i=3;i>0;--i){
+#	}
+# }
+# Program start at address 0, after reset.
+
+I@0x00000000
+LOAD $11, $0, 0x32A4 # 0x0
+LOAD $3, $0, 0x32A8 # 0x4
+LOAD $1, $0, 0x32A0 # 0x8
+ADD $2, $0, $1 # 0xC
+SUB $2, $2, $11 # 0x10
+BRNEQ $3, $0, $2 # 0x14
+HALT $0
+
+# Data for this program. Any other location that is not explicitly set is implicitly set to zero.
+D@0x000032A0
+0x4
+0x1
+-8
