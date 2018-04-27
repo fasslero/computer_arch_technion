@@ -17,7 +17,7 @@ void do_write_to_reg_file(void);
 void flush_buffer(int number);
 void do_branch_if_needed(void);
 void do_flush_to_i_stages(int i);
-
+void reset_cmd(void);
 void do_halt_if_needed(void); //todo
 
 // Data-Hazard Detection Unit. Also updates in case of hazard.
@@ -52,7 +52,7 @@ bool halt_flag = 0;
   \returns 0 on success. <0 in case of initialization failure.
 */
 int SIM_CoreReset(void) {
-    pipeline.pc = 0; //todo - zero or -4?
+    pipeline.pc = -4; //todo - zero or -4?
 
     //init the reg file
     for (int i = 0; i < SIM_REGFILE_SIZE; ++i) {
@@ -61,7 +61,7 @@ int SIM_CoreReset(void) {
 
     for (int j = 0; j < SIM_PIPELINE_DEPTH ; ++j) {
         //reset the command
-        reset_cmd(&pipeline.pipeStageState[j].cmd);
+        reset_cmd(j);
         //reset the current state values
         pipeline.pipeStageState[j].src1Val = 0;
         pipeline.pipeStageState[j].src2Val = 0;
@@ -72,12 +72,14 @@ int SIM_CoreReset(void) {
  * init the cmd struct
  *
  */
-void reset_cmd(PipeStageState* PipeStageState){
-    PipeStageState->cmd.dst = 0;
-    PipeStageState->cmd.isSrc2Imm = false;
-    PipeStageState->cmd.opcode = 0;
-    PipeStageState->cmd.src1 = 0;
-    PipeStageState->cmd.src2 = 0;
+void reset_cmd(int j){
+    printf("rest cmd/n");
+    pipeline.PipeStageState[j]->cmd.dst = 0;
+    pipeline.PipeStageState[j]->cmd.isSrc2Imm = false;
+    pipeline.PipeStageState[j]->cmd.opcode = 0;
+    pipeline.PipeStageState[j]->cmd.src1 = 0;
+    pipeline.PipeStageState[j]->cmd.src2 = 0;
+
 }
 
 /*! SIM_CoreClkTick: Update the core simulator's state given one clock cycle.
@@ -87,7 +89,8 @@ void SIM_CoreClkTick() {
     //clk tick (pc+4 and so on)
     ++tick_number;
 
-    do_pipe_WB();
+    do_pipe_wb();
+    printf("done with wb\n");
 
     if (do_pipe_mem() != 0)
         return;
@@ -106,7 +109,7 @@ void SIM_CoreClkTick() {
     The function will return the state of the pipe at the end of a cycle
 */
 void SIM_CoreGetState(SIM_coreState *curState) {
-    curState = *pipeline;
+    *curState = pipeline;
 }
 
 
@@ -137,6 +140,7 @@ void do_pipe_fetch(void){
     free(nextCommand);
 
     do_halt_if_needed();
+    print_state();
 }
 
 //decode the command and store the data in the SIM_cmd struct
@@ -235,7 +239,9 @@ void do_pipe_mem(void){
             break;
         case CMD_LOAD:
             //may take more then one cycle, if so all the pipe will wait
-            return do_pipe_mem_load();
+            if (do_pipe_mem_load() == -1)
+                return -1;
+            break;
         case CMD_STORE:
             //will end in one cycle
             SIM_MemDataWrite(memory_address, mem_pipe_state->src1Val);
